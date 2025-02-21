@@ -69,8 +69,8 @@ model.FlexibleLoad = pyo.Set(ordered=True) #Set of flexible loads (batteries)
 model.FlexibleLoadForEnergyCarrier = pyo.Set(dimen = 2, ordered = True)
 model.ShiftableLoadForEnergyCarrier = pyo.Set(dimen = 2, ordered = True, within = model.FlexibleLoadForEnergyCarrier)
 model.Nodes = pyo.Set(ordered=True) #Set of Nodess
-model.Nodes_DA = pyo.Set(within = model.Nodes) #SubSet of Nodess
-model.Nodes_ID = pyo.Set(within = model.Nodes) #SubSet of Nodess
+model.Nodes_Plan = pyo.Set(within = model.Nodes) #SubSet of Nodess
+#model.Nodes_ID = pyo.Set(within = model.Nodes) #SubSet of Nodess
 model.Nodes_RT = pyo.Set(within = model.Nodes) #SubSet of Nodess
 model.Parent_Node = pyo.Set(dimen = 2, ordered = True)
 model.Mode_of_operation = pyo.Set(ordered = True)
@@ -90,7 +90,7 @@ data.load(filename="Set_of_FlexibleLoadForEC.tab", format="set", set=model.Flexi
 data.load(filename="Subset_ShiftableLoadForEC.tab", format="set", set=model.ShiftableLoadForEnergyCarrier)
 data.load(filename="Set_of_LoadShiftingInterval.tab", format = "set", set = model.LoadShiftingIntervals)
 data.load(filename="Subset_Plan_Nodes.tab", format = "set", set = model.Nodes_DA)
-data.load(filename="Subset_ID_Nodes.tab", format = "set", set = model.Nodes_ID)
+#data.load(filename="Subset_ID_Nodes.tab", format = "set", set = model.Nodes_ID)
 data.load(filename="Subset_RT_Nodes.tab", format = "set", set = model.Nodes_RT)
 data.load(filename="Set_parent_coupling.tab", format = "set", set = model.Parent_Node)
 data.load(filename="Set_Mode_of_Operation.tab", format = "set", set = model.Mode_of_operation)
@@ -134,8 +134,10 @@ model.Ramping_Factor = pyo.Param(model.Technology)
 model.Availability_Factor = pyo.Param(model.Nodes, model.Time, model.Technology) #Availability factor for technology delivering to energy carrier 
 model.Carbon_Intensity = pyo.Param(model.Technology, model.Mode_of_operation) #Carbon intensity when using technology i in mode o
 model.Max_Export = pyo.Param() #Maximum allowable export per year, if no concession is given
-model.Activation_Factor_UP_Regulation = pyo.Param(model.Nodes, model.Time, default = 0) # Activation factor determining the duration of up regulation
-model.Activation_Factor_DWN_Regulation = pyo.Param(model.Nodes, model.Time, default = 0) # Activation factor determining the duration of dwn regulation
+model.Activation_Factor_Reserve_UP_Regulation = pyo.Param(model.Nodes, model.Time, default = 0) # Activation factor determining the duration of up regulation
+model.Activation_Factor_Reserve_DWN_Regulation = pyo.Param(model.Nodes, model.Time, default = 0) # Activation factor determining the duration of dwn regulation
+model.Activation_Factor_ID_UP = pyo.Param(model.Nodes, model.Time, default = 0) # Activation factor determining the duration of up regulation
+model.Activation_Factor_ID_DWN = pyo.Param(model.Nodes, model.Time, default = 0) # Activation factor determining the duration of dwn regulation
 model.Available_Excess_Heat = pyo.Param() #Fraction of the total available excess heat at usable temperature level to \\& be used an energy source for the heat pump.
 model.Energy2Power_Ratio = pyo.Param(model.FlexibleLoad)
 model.Max_CAPEX_tech = pyo.Param(model.Technology)
@@ -176,8 +178,10 @@ data.load(filename="Par_InitialCapacityInstalled.tab", param=model.Initial_Insta
 data.load(filename="Par_AvailabilityFactor.tab", param=model.Availability_Factor, format = "table")
 data.load(filename="Par_CarbonIntensity.tab", param=model.Carbon_Intensity, format = "table")
 data.load(filename="Par_MaxExport.tab", param=model.Max_Export, format = "table")
-data.load(filename="Par_ActivationFactor_Up_Reg.tab", param=model.Activation_Factor_UP_Regulation, format = "table")
-data.load(filename="Par_ActivationFactor_Dwn_Reg.tab", param=model.Activation_Factor_DWN_Regulation, format = "table")
+data.load(filename="Par_ActivationFactor_Up_Reg.tab", param=model.Activation_Factor_Reserve_UP_Regulation, format = "table")
+data.load(filename="Par_ActivationFactor_Dwn_Reg.tab", param=model.Activation_Factor_Reserve_DWN_Regulation, format = "table")
+data.load(filename="Par_ActivationFactor_ID_Up_Reg.tab", param=model.Activation_Factor_ID_UP, format = "table")
+data.load(filename="Par_ActivationFactor_ID_Dwn_Reg.tab", param=model.Activation_Factor_ID_DWN, format = "table")
 data.load(filename="Par_AvailableExcessHeat.tab", param=model.Available_Excess_Heat, format = "table")
 data.load(filename="Par_Energy2Power_ratio.tab", param=model.Energy2Power_Ratio, format = "table")
 data.load(filename="Par_Ramping_factor.tab", param=model.Ramping_Factor, format = "table")
@@ -209,7 +213,7 @@ model.q_SoC = pyo.Var(model.Nodes, model.Time, model.FlexibleLoad, domain= pyo.N
 model.v_new_tech = pyo.Var(model.Technology, domain = pyo.NonNegativeReals, bounds = (0, 0)) 
 model.v_new_bat = pyo.Var(model.FlexibleLoad, domain = pyo.NonNegativeReals, bounds = (0, 0))
 model.y_max = pyo.Var(model.Nodes, model.Month, domain = pyo.NonNegativeReals)
-model.d_flex = pyo.Var(model.Nodes, model.Time, model.EnergyCarrier, domain = pyo.NonNegativeReals)
+#model.d_flex = pyo.Var(model.Nodes, model.Time, model.EnergyCarrier, domain = pyo.NonNegativeReals)
 
 
 """
@@ -221,26 +225,23 @@ def objective(model):
         sum(model.Cost_Expansion_Tec[i] * model.v_new_tech[i] for i in model.Technology)
         + sum(model.Cost_Expansion_Bat[b] * model.v_new_bat[b] for b in model.FlexibleLoad)
                 
-        # Day-ahead and Capacity reservation        
+        # Cost Capacity reservation Stage 1       
         + sum(            
             sum(model.Node_Probability[n] * (
-                model.Spot_Price[n, t] * model.x_DA[n, t]
                 - (model.aFRR_Up_Capacity_Price[n, t] * model.x_UP_Tot[n, t] +
                     model.aFRR_Dwn_Capacity_Price[n, t] * model.x_DWN_Tot[n, t])
-            ) for n in model.Nodes_DA)
+            ) for n in model.Nodes_Plan)
                        
-            # Intraday market
-            + sum(model.Node_Probability[n] * (model.Intraday_Price[n, t] * (model.x_ID_Up[n, t] - model.x_ID_Dwn[n, t])) for n in model.Nodes_ID)
+            # Costs in Stage 2 - activation ID, DA, RT
+            # Cost/Compensation activation in reserve market
+            + sum(model.Node_Probability[n] * (-model.Activation_Factor_Reserve_UP_Regulation[n, t] * model.aFRR_Up_Activation_Price[n, t] * model.x_UP_Tot[n, t]
+                + model.Activation_Factor_DWN_Regulation[n, t] * model.aFRR_Dwn_Activation_Price[n, t] * model.x_DWN_Tot[n, t])
             
-            # Cost/Compensation activation            
-            + sum(model.Node_Probability[n] * (
-                -model.Activation_Factor_UP_Regulation[n, t] * model.aFRR_Up_Activation_Price[n, t] * model.x_UP_Tot[n, t]
-                + model.Activation_Factor_DWN_Regulation[n, t] * model.aFRR_Dwn_Activation_Price[n, t] * model.x_DWN_Tot[n, t]
-                    
-
+                + (model.Spot_Price[n, t]*model.x_DA[n,t] + model.Intraday_Price[n,t]*(model.Activation_Factor_ID_UP[n,t]*model.x_ID_Up[n,t] - model.Activation_Factor_ID_Dwn[n,t]*model.x_ID_Dwn[n,t])) 
+        
                 # Cost of Consumption and Carbon emissions
-                + sum(sum(model.y_activity[n, t, i, o] * (model.Cost_Energy[n, t, i] + model.Carbon_Intensity[i, o])
-                    for i,e,o in model.TechnologyToEnergyCarrier)
+                + sum(sum(model.y_activity[n, t, i, o] * model.Cost_Energy[n, t, i] + model.Carbon_Intensity[i, o])
+                    for e in model.TechnologyToEnergyCarrier)
                     - model.Cost_Export[n, t, e] * model.z_export[n, t, e] for e in model.EnergyCarrier)
 
                 # Real-time adjustment compensation/cost + imbalance cost
