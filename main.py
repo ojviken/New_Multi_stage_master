@@ -42,7 +42,7 @@ def read_all_sheets(excel):
         print(f"Saved file: {output_filename}")
 
 # Call the function with your Excel file
-read_all_sheets('Ny_testkode.xlsx')
+read_all_sheets('Ny_testkode_copy.xlsx')
 
 ####################################################################
 ######################### MODEL SPECIFICATIONS #####################
@@ -213,6 +213,7 @@ model.q_SoC = pyo.Var(model.Nodes, model.Time, model.FlexibleLoad, domain= pyo.N
 model.v_new_tech = pyo.Var(model.Technology, domain = pyo.NonNegativeReals, bounds = (0, 0)) 
 model.v_new_bat = pyo.Var(model.FlexibleLoad, domain = pyo.NonNegativeReals, bounds = (0, 0))
 model.y_max = pyo.Var(model.Nodes, model.Month, domain = pyo.NonNegativeReals)
+model.binary_RT = pyo.Var(model.Nodes, model.Time, domain = pyo.Binary)
 #model.d_flex = pyo.Var(model.Nodes, model.Time, model.EnergyCarrier, domain = pyo.NonNegativeReals)
 
 
@@ -422,20 +423,31 @@ def market_balance(model, n, t, i, e, o):
     else:
         return pyo.Constraint.Skip      
 model.MarketBalance = pyo.Constraint(model.Nodes, model.Time, model.TechnologyToEnergyCarrier, rule = market_balance)
-
+"""
 def market_balance_ID(model, n, p, t, i, e, o):
     if (i, e) == ("Power_Grid", "Electricity") and n in model.Nodes_RT:
         return (model.y_out[n, t, i, e, o] == model.x_DA[p, t] + model.Activation_Factor_ID_Up[n,t]*model.x_ID_Up[p, t] - model.Activation_Factor_ID_Dwn[n,t]*model.x_ID_Dwn[p, t] + model.x_RT_Up[n, t] - model.x_RT_Dwn[n, t])
     else:
         return pyo.Constraint.Skip      
 model.MarketBalanceID = pyo.Constraint(model.Parent_Node, model.Time, model.TechnologyToEnergyCarrier, rule = market_balance_ID)
- 
+"""
  
 """
 def Max_ID_Adjustment(model, n, t):
         return (0.2*model.x_DA[n, t] >= model.x_ID_Up[n, t] + model.x_ID_Dwn[n, t])
 model.MaxIDAdjustment = pyo.Constraint(model.Nodes, model.Time, rule = Max_ID_Adjustment)
 """
+def Max_ID_Adjustment(model, n, t):
+        return model.x_ID_Up[n, t] + model.x_ID_Dwn[n, t] <= 10
+model.MaxIDAdjustment = pyo.Constraint(model.Nodes, model.Time, rule = Max_ID_Adjustment)
+
+def binary_RT_up(model, n, t):
+    return model.x_RT_Up[n, t] <= 40 * model.binary_RT[n, t]
+model.BinaryRTUp = pyo.Constraint(model.Nodes, model.Time, rule = binary_RT_up)
+
+def binary_RT_dwn(model, n, t):
+    return model.x_RT_Dwn[n, t] <= 40 * (1 - model.binary_RT[n, t])
+model.BinaryRTDwn = pyo.Constraint(model.Nodes, model.Time, rule = binary_RT_dwn)
 
 #####################################################################################
 ########################### CONVERSION BALANCE ######################################
@@ -811,7 +823,7 @@ print("-" * 70)
 """
 EXTRACT VALUE OF VARIABLES AND WRITE THEM INTO EXCEL FILE
 """
-"""
+
 def save_results_to_excel(model_instance, filename="Variable_Results.xlsx"):
     
     # Saves Pyomo variable results into an Excel file with filtered output.
@@ -857,7 +869,7 @@ def save_results_to_excel(model_instance, filename="Variable_Results.xlsx"):
 
 # Usage after solving the model
 save_results_to_excel(our_model, filename="Variable_Results.xlsx")
-"""
+
 
 """
 PLOT RESULTS
